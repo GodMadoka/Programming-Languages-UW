@@ -1,0 +1,113 @@
+exception NoAnswer
+
+
+
+fun only_capitals xs =
+  List.filter (fn x => Char.isUpper(String.sub(x,0)) handle _=>false) xs
+
+fun longest_string1 xs =
+  List.foldl (fn (x,y)=> if String.size x > String.size y then x else y) "" xs
+	     
+fun longest_string2 xs =
+  List.foldl (fn (x,y)=> if String.size x >= String.size y then x else y) "" xs
+
+fun longest_string_helper f =
+  List.foldl (fn (x,y) => if f(String.size x,String.size y) then x else y) ""		       
+
+val longest_string3 = longest_string_helper (fn(x,y)=> x > y)
+					    
+val longest_string4 = longest_string_helper (fn(x,y)=> x >= y)
+					    
+val longest_capitalized = longest_string1 o only_capitals
+						
+val rev_string = String.implode o List.rev o String.explode
+
+fun first_answer f xs =
+  case xs of
+      [] => raise NoAnswer
+   |  x::xs => case f x of
+		   NONE => first_answer f xs
+		|  SOME y => y 
+
+(* If it return NONE for "ANY" element, then the result for all_answers is NONE *)				 
+fun all_answers f xs = 
+  let fun helper xs acc =
+	case xs of
+	    [] => SOME acc
+	 |  x::xs => case f x of
+			 NONE => NONE
+		      |  SOME y => helper xs (y @ acc)
+  in
+      helper xs []
+  end
+      
+datatype pattern = Wildcard
+		 | Variable of string
+		 | UnitP
+		 | ConstP of int
+		 | TupleP of pattern list
+		 | ConstructorP of string * pattern
+
+datatype valu = Const of int
+	      | Unit
+	      | Tuple of valu list
+	      | Constructor of string * valu
+
+fun g f1 f2 p =
+    let 
+	val r = g f1 f2 
+    in
+	case p of
+	    Wildcard          => f1 ()
+	  | Variable x        => f2 x
+	  | TupleP ps         => List.foldl (fn (p,i) => (r p) + i) 0 ps
+	  | ConstructorP(_,p) => r p
+	  | _                 => 0
+    end
+
+val count_wildcards = g (fn _=> 1) (fn y => 0) 
+  
+val count_wild_and_variable_lengths = g (fn _=> 1) (fn y=>String.size y)
+
+fun count_some_var (s,p) = g (fn _=> 0) (fn y => if s=y then 1 else 0) p
+
+fun check_pat p =
+  let fun all_strings p = 
+	case p of
+	    Variable x => [x]
+	 |  TupleP ps => List.foldl (fn (p,xs) => all_strings p @ xs) [] ps
+	 |  ConstructorP(_,p) => all_strings p
+	 |  _ => []
+      fun check_repeats xs =
+	case xs of
+	    [] => false
+	  | x::xs => List.exists(fn y => x=y) xs orelse check_repeats xs      
+  in
+      not (check_repeats (all_strings p))
+  end
+      
+fun match (v,p) =
+  let fun helper (p,v) =
+  case (p,v) of
+     (Wildcard,_) => SOME []
+   | (Variable s,v) => SOME [(s,v)]
+   | (UnitP,Unit) => SOME []
+   | (ConstP x,Const y) => if x=y then SOME [] else NONE
+   | (TupleP ps,Tuple vs) =>
+	       ((let val pvs = ListPair.zipEq(ps,vs)
+	         in		    
+		     all_answers helper pvs		  
+		 end)  handle UnequalLengths => NONE)
+		    
+   | (ConstructorP(s1,p),Constructor(s2,v)) =>
+	  if s1 = s2 then helper(p,v) else NONE
+   | _ => NONE				      
+  in
+      helper(p,v)
+  end
+
+
+fun first_match v ps =
+  let fun uncurry f x y = f(x,y)
+  in (SOME (first_answer (uncurry match v) ps)) handle NoAnswer => NONE 
+  end
